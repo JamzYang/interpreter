@@ -1,3 +1,12 @@
+/**
+ * 根组件
+ * 
+ * 核心功能:
+ * 1. 应用布局
+ * 2. 路由视图
+ * 3. 全局状态
+ */
+
 <script setup lang="ts">
 import HelloWorld from './components/HelloWorld.vue'
 </script>
