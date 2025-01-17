@@ -31,6 +31,9 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import type { AudioStatus } from '@/types/audio';
+import { AudioService } from '../services/AudioService';
+
+const audioService = AudioService.getInstance();
 
 const props = defineProps<{
   isDeviceSelected: boolean;
@@ -47,7 +50,7 @@ const status = ref<AudioStatus>({
 // 开始音频处理
 const handleStart = async () => {
   try {
-    await window.audioAPI.start();
+    audioService.start();
     emit('start');
   } catch (error) {
     console.error('Failed to start audio:', error);
@@ -57,7 +60,7 @@ const handleStart = async () => {
 // 停止音频处理
 const handleStop = async () => {
   try {
-    await window.audioAPI.stop();
+    audioService.stop();
     emit('stop');
   } catch (error) {
     console.error('Failed to stop audio:', error);

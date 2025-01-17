@@ -6,28 +6,26 @@
       "moduleResolution": "Node",
       "strict": true,
       "jsx": "preserve",
-      "sourceMap": true,
       "resolveJsonModule": true,
       "isolatedModules": true,
       "esModuleInterop": true,
       "lib": ["ESNext", "DOM"],
       "skipLibCheck": true,
+      "noEmit": true,
       "baseUrl": ".",
       "paths": {
-        "@/*": ["src/*"]
-      },
-      "types": ["electron", "node"],
-      "typeRoots": [
-        "./node_modules/@types",
-        "./src/types"
-      ]
+        "@/*": ["src/renderer/*"],
+        "@main/*": ["src/main/*"],
+        "@types/*": ["src/types/*"]
+      }
     },
     "include": [
       "src/**/*.ts", 
       "src/**/*.d.ts", 
       "src/**/*.tsx", 
-      "src/**/*.vue",
-      "src/types/**/*.d.ts"
+      "src/**/*.vue"
     ],
-    "references": [{ "path": "./tsconfig.node.json" }]
+    "references": [
+      { "path": "./tsconfig.node.json" }
+    ]
   }

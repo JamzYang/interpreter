@@ -37,17 +37,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import type { AudioDevices } from '@/types/audio';
+import { ref, onMounted, watch } from 'vue';
+import { AudioService } from '../services/AudioService';
+
+const audioService = AudioService.getInstance();
 
 const emit = defineEmits(['device-selected']);
 const props = defineProps<{
   isRunning: boolean;
 }>();
 
-const devices = ref<AudioDevices>({ inputs: [], outputs: [] });
-const selectedInput = ref<number>();
-const selectedOutput = ref<number>();
+const devices = ref<{
+  inputs: { id: string; name: string }[];
+  outputs: { id: string; name: string }[];
+}>({ inputs: [], outputs: [] });
+const selectedInput = ref<string>();
+const selectedOutput = ref<string>();
 
 // 监听设备选择变化
 watch([selectedInput, selectedOutput], () => {
@@ -62,7 +67,17 @@ watch([selectedInput, selectedOutput], () => {
 // 加载设备列表
 const loadDevices = async () => {
   try {
-    devices.value = await window.audioAPI.getDevices();
+    const deviceList = await audioService.getDevices();
+    devices.value = {
+      inputs: deviceList.inputs.map(device => ({
+        id: device.deviceId,
+        name: device.label || `麦克风 ${device.deviceId}`
+      })),
+      outputs: deviceList.outputs.map(device => ({
+        id: device.deviceId,
+        name: device.label || `扬声器 ${device.deviceId}`
+      }))
+    };
   } catch (error) {
     console.error('Failed to load devices:', error);
   }
