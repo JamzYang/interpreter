@@ -10,7 +10,7 @@
 import { DeviceStatus } from "@/types/device";
 import { MediaDevice } from "@/types/device";
 import { deviceUtils } from "@/utils/device";
-import { EventEmitter } from 'events';
+import { EventEmitter } from '@/utils/EventEmitter';
 
 // 添加 DOM 错误类型
 type DOMError = NotFoundError | NotAllowedError | NotReadableError;
@@ -27,10 +27,12 @@ export class VirtualDeviceManager extends EventEmitter {
     private devices: Map<string, MediaDevice> = new Map();
     private status: DeviceStatus = {
         hasInput: false, 
-        hasOutput: false , 
+        hasOutput: false,
         inputReady: false, 
         outputReady: false
     };
+    private initialized: boolean = false;
+    private initPromise: Promise<void> | null = null;
     private audioContext: AudioContext | null = null;
     private currentStream: MediaStream | null = null;
     private mediaRecorder: MediaRecorder | null = null;
@@ -39,89 +41,102 @@ export class VirtualDeviceManager extends EventEmitter {
     private recordingStartTime: number = 0;
   
     private constructor() {
-        super(); // 调用 EventEmitter 构造函数
-      // 初始化设备管理器
+        super();
     }
   
-    // 获取单例
-    public static getInstance(): VirtualDeviceManager {
-      if (!VirtualDeviceManager.instance) {
-        VirtualDeviceManager.instance = new VirtualDeviceManager();
-      }
-      return VirtualDeviceManager.instance;
-    }
-  
-    // 核心方法实现
-    async init(): Promise<void> {
-      await this.detectVBCableDevices();
-      await this.monitorDeviceChanges();
-    }
-    
-    async detectVBCableDevices(): Promise<void> {
-      const devices = await deviceUtils.getAudioDevices();
-      
-      // 重置状态
-      this.devices.clear();
-      this.status.hasInput = false;
-      this.status.hasOutput = false;
-      
-      // 检查每个设备
-      for (const device of devices) {
-        const formattedDevice = deviceUtils.formatDeviceInfo(device);
-        
-        if (formattedDevice.isVBCable) {
-          this.devices.set(formattedDevice.id, formattedDevice);
-          
-          if (formattedDevice.kind === 'audioinput') {
-            this.status.hasInput = true;
-          } else if (formattedDevice.kind === 'audiooutput') {
-            this.status.hasOutput = true;
-          }
+    // 获取单例并确保初始化完成
+    public static async getInstance(): Promise<VirtualDeviceManager> {
+        if (!VirtualDeviceManager.instance) {
+            VirtualDeviceManager.instance = new VirtualDeviceManager();
         }
-      }
+        // 确保实例已初始化
+        await VirtualDeviceManager.instance.ensureInitialized();
+        return VirtualDeviceManager.instance;
+    }
+  
+    // 确保初始化完成
+    private async ensureInitialized(): Promise<void> {
+        if (this.initialized) return;
+        
+        if (!this.initPromise) {
+            this.initPromise = this.init();
+        }
+        
+        await this.initPromise;
+    }
+  
+    // 初始化方法保持私有
+    private async init(): Promise<void> {
+        if (this.initialized) return;
+        
+        try {
+            await this.detectVBCableDevices();
+            await this.monitorDeviceChanges();
+            this.initialized = true;
+        } catch (error) {
+            console.error('VirtualDeviceManager 初始化失败:', error);
+            this.emit('initError', error);
+            this.initPromise = null; // 重置初始化Promise以允许重试
+            throw error;
+        }
+    }
+  
+    async detectVBCableDevices(): Promise<void> {
+        const devices = await deviceUtils.getAudioDevices();
+        
+        // 检查 CABLE Input 是否为系统默认播放设备
+        // 检查 CABLE Output 是否为系统默认录制设备
+        // 如果不是，提示用户修改系统设置
     }
     
     async getInputDevice(): Promise<MediaDevice> {
-      const device = Array.from(this.devices.values())
-        .find(d => d.kind === 'audioinput' && d.isVBCable);
-      if (!device) {
-        throw new Error('VB-CABLE 输入设备未找到');
-      }
-      return device;
+        await this.ensureInitialized();
+        
+        const device = Array.from(this.devices.values())
+            .find(d => d.kind === 'audioinput' && d.isVBCable);
+        if (!device) {
+            throw new Error('VB-CABLE 输入设备未找到');
+        }
+        return device;
     }
     
     async getOutputDevice(): Promise<MediaDevice> {
-      const device = Array.from(this.devices.values())
-        .find(d => d.kind === 'audiooutput' && d.isVBCable);
-      if (!device) {
-        throw new Error('VB-CABLE 输出设备未找到');
-      }
-      return device;
+        await this.ensureInitialized();
+        
+        const device = Array.from(this.devices.values())
+            .find(d => d.kind === 'audiooutput' && d.isVBCable);
+        if (!device) {
+            throw new Error('VB-CABLE 输出设备未找到');
+        }
+        return device;
     }
     
     async monitorDeviceChanges(): Promise<void> {
-      navigator.mediaDevices.addEventListener('devicechange', async () => {
-        await this.detectVBCableDevices();
-        this.emit('deviceChange'); // 触发事件
-      });
+        navigator.mediaDevices.addEventListener('devicechange', async () => {
+            await this.detectVBCableDevices();
+            this.emit('deviceChange'); // 触发事件
+        });
     }
     
     async validateDevices(): Promise<boolean> {
-      const input = await this.getInputDevice();
-      const output = await this.getOutputDevice();
-      
-      this.status.inputReady = await deviceUtils.testDevice(input.id);
-      this.status.outputReady = await deviceUtils.testDevice(output.id);
-      
-      return this.status.inputReady && this.status.outputReady;
+        await this.ensureInitialized();
+        const input = await this.getInputDevice();
+        const output = await this.getOutputDevice();
+        
+        this.status.inputReady = await deviceUtils.testDevice(input.id);
+        this.status.outputReady = await deviceUtils.testDevice(output.id);
+        
+        return this.status.inputReady && this.status.outputReady;
     }
     
     async getStatus(): Promise<DeviceStatus> {
-      return this.status;
+        await this.ensureInitialized();
+        return this.status;
     }
     
     // 增强版音频流测试
     async testAudioStream(testDuration: number = 3000): Promise<boolean> {
+        await this.ensureInitialized();
         try {
             const inputDevice = await this.getInputDevice();
             
@@ -431,6 +446,49 @@ export class VirtualDeviceManager extends EventEmitter {
     private getRecordingDuration(): number {
         if (!this.isRecording) return 0;
         return Date.now() - this.recordingStartTime;
+    }
+
+    async getInputStream(): Promise<MediaStream> {
+        const inputDevice = await this.getInputDevice();
+        return navigator.mediaDevices.getUserMedia({
+            audio: {
+                deviceId: { exact: inputDevice.id },
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false
+            }
+        });
+    }
+
+    async setInputDevice(deviceId: string): Promise<void> {
+        const devices = await deviceUtils.getAudioDevices();
+        const device = devices.find(d => d.deviceId === deviceId);
+        
+        if (!device) {
+            throw new Error('Input device not found');
+        }
+
+        // 更新设备并触发事件
+        await this.detectVBCableDevices();
+        this.emit('deviceChange');
+    }
+
+    async getDevices(): Promise<MediaDevice[]> {
+        await this.ensureInitialized();
+        return Array.from(this.devices.values());
+    }
+
+    async setOutputDevice(deviceId: string): Promise<void> {
+        const devices = await deviceUtils.getAudioDevices();
+        const device = devices.find(d => d.deviceId === deviceId);
+        
+        if (!device) {
+            throw new Error('Output device not found');
+        }
+
+        // 更新设备并触发事件
+        await this.detectVBCableDevices();
+        this.emit('deviceChange');
     }
 }
 

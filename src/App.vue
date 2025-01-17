@@ -8,7 +8,7 @@
  */
 
 <script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
+import DeviceSelector from './components/audio/DeviceSelector.vue'
 </script>
 
 <template>
@@ -23,7 +23,12 @@ import HelloWorld from './components/HelloWorld.vue'
       <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
     </a>
   </div>
-  <HelloWorld msg="Electron + Vite + Vue" />
+
+  <div class="container">
+    <h2>音频设备设置</h2>
+    <DeviceSelector />
+  </div>
+
   <div class="flex-center">
     Place static files into the <code>/public</code> folder
     <img style="width: 2.4em; margin-left: .4em;" src="/logo.svg" alt="Logo">
@@ -54,5 +59,17 @@ import HelloWorld from './components/HelloWorld.vue'
 
 .logo.vue:hover {
   filter: drop-shadow(0 0 2em #42b883aa);
+}
+
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+h2 {
+  text-align: center;
+  color: #2c3e50;
+  margin-bottom: 20px;
 }
 </style>

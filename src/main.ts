@@ -1,4 +1,6 @@
 import { createApp } from 'vue'
+import ElementPlus from 'element-plus'
+import 'element-plus/dist/index.css'
 import App from './App.vue'
 
 import './style.css'
@@ -16,8 +18,10 @@ import './demos/ipc'
  * 3. 启动应用
  */
 
-createApp(App)
-  .mount('#app')
+const app = createApp(App)
+
+app.use(ElementPlus)
+app.mount('#app')
   .$nextTick(() => {
     postMessage({ payload: 'removeLoading' }, '*')
   })
