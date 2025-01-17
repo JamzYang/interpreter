@@ -5,8 +5,8 @@
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build && electron-builder",
-    "preview": "vite preview",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
     "start": "electron-vite dev"
   },
   "dependencies": {
