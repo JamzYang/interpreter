@@ -14,7 +14,7 @@ import { VirtualDeviceManager } from './VirtualDeviceManager';
 import { AudioProcessor } from '@/services/audio/AudioProcessor';
 import { Logger } from '@/utils/Logger';
 import { MediaDevice } from '@/types/device';
-
+import { deviceUtils } from "@/utils/device";
 export enum AudioServiceEvent {
   ERROR = 'error',
   STATUS_CHANGE = 'statusChange',
@@ -38,6 +38,8 @@ export class AudioService extends EventEmitter {
   private audioProcessor: AudioProcessor | null = null;
   private status: AudioServiceStatus = AudioServiceStatus.INITIALIZING;
   private logger: Logger;
+  private currentInputId: string = '';
+  private currentOutputId: string = '';
 
   public static async getInstance(): Promise<AudioService> {
     if (!AudioService.instance) {
@@ -98,9 +100,11 @@ export class AudioService extends EventEmitter {
         throw new Error('AudioService is not ready');
       }
       
-      await this.audioProcessor?.startRecording();
-      this.setStatus(AudioServiceStatus.RECORDING);
-      this.emit(AudioServiceEvent.RECORDING_START);
+      if (this.audioProcessor) {
+        await this.audioProcessor.start(this.currentInputId, this.currentOutputId);
+        this.setStatus(AudioServiceStatus.RECORDING);
+        this.emit(AudioServiceEvent.RECORDING_START);
+      }
     } catch (error) {
       this.handleError('Failed to start recording', error);
     }
@@ -112,7 +116,7 @@ export class AudioService extends EventEmitter {
         throw new Error('Not currently recording');
       }
       
-      await this.audioProcessor?.stopRecording();
+      this.audioProcessor?.stop();
       this.setStatus(AudioServiceStatus.READY);
       this.emit(AudioServiceEvent.RECORDING_STOP);
     } catch (error) {
@@ -151,24 +155,26 @@ export class AudioService extends EventEmitter {
 
   // 设备管理接口
   public async switchInputDevice(deviceId: string): Promise<void> {
-    try {
-      await this.deviceManager.setInputDevice(deviceId);
-      await this.audioProcessor?.updateInputDevice(deviceId);
-    } catch (error) {
-      this.handleError('Failed to switch input device', error);
-    }
+    // try {
+    //   await this.deviceManager.setInputDevice(deviceId);
+    //   await this.audioProcessor?.updateInputDevice(deviceId);
+    // } catch (error) {
+    //   this.handleError('Failed to switch input device', error);
+    // }
   }
 
   public async getAvailableDevices(): Promise<MediaDevice[]> {
-    return await this.deviceManager.getDevices();
+    return await deviceUtils.getAudioDevices();
   }
 
+  // 设置应用程序的物理设备
   public async setDevices(inputId: string, outputId: string) {
     try {
-      await this.deviceManager.setInputDevice(inputId);
-      await this.deviceManager.setOutputDevice(outputId);
-      
-      // 如果正在处理音频，重新启动处理
+      // 保存当前设备ID
+      this.currentInputId = inputId;
+      this.currentOutputId = outputId;
+
+      // 如果正在录音，需要重启音频处理
       if (this.status === AudioServiceStatus.RECORDING) {
         await this.stopRecording();
         await this.startRecording();

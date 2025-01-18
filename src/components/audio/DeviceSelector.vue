@@ -14,29 +14,25 @@
     <el-form>
       <!-- 输入设备选择 -->
       <el-form-item label="输入设备">
-        <el-select v-model="selectedInput" @change="(val: string) => handleInputChange(val)">
+        <el-select v-model="selectedInput" @change="handleInputChange">
           <el-option
             v-for="device in inputDevices"
             :key="device.id"
             :label="device.label"
             :value="device.id"
-          >
-            <span :class="{ 'vb-cable': device.isVBCable }">{{ device.label }}</span>
-          </el-option>
+          />
         </el-select>
       </el-form-item>
 
       <!-- 输出设备选择 -->
       <el-form-item label="输出设备">
-        <el-select v-model="selectedOutput" @change="(val: string) => handleOutputChange(val)">
+        <el-select v-model="selectedOutput" @change="handleOutputChange">
           <el-option
             v-for="device in outputDevices"
             :key="device.id"
             :label="device.label"
             :value="device.id"
-          >
-            <span :class="{ 'vb-cable': device.isVBCable }">{{ device.label }}</span>
-          </el-option>
+          />
         </el-select>
       </el-form-item>
     </el-form>
@@ -85,9 +81,3 @@ const handleOutputChange = async (deviceId: string) => {
 
 onMounted(loadDevices)
 </script>
-
-<style scoped>
-.vb-cable {
-  color: #409EFF;
-}
-</style>

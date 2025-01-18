@@ -58,7 +58,7 @@ export const deviceUtils = {
   },
 
   // 获取所有音频设备
-  async getAudioDevices(): Promise<MediaDeviceInfo[]> {
+  async getAudioDevices(): Promise<MediaDevice[]> {
     // 先请求权限
     await this.requestPermission();
     // 然后枚举设备
@@ -69,8 +69,7 @@ export const deviceUtils = {
       kind: d.kind,
       label: d.label
     })));
-    
-    return devices;
+    return devices.map(device => this.formatDeviceInfo(device));
   },
 
   // 测试设备可用性
@@ -97,10 +96,6 @@ export const deviceUtils = {
     const isInput = device.kind === 'audioinput';
     
     // 先检查是否为VB-CABLE设备
-    // const isVBCable = this.isVBCableDevice(label) && (
-    //   (isInput && this.isVBCableInput(label)) ||
-    //   (!isInput && this.isVBCableOutput(label))
-    // );
     const isVBCable = this.isVBCableDevice(label);
 
     return {
