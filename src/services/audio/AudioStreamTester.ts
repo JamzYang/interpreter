@@ -1,5 +1,6 @@
 import { EventEmitter } from '@/utils/EventEmitter';
 import { VirtualDeviceManager } from './VirtualDeviceManager';
+import { AudioProcessor } from './AudioProcessor';
 
 export interface TestResult {
   success: boolean;
@@ -21,10 +22,12 @@ export class AudioStreamTester extends EventEmitter {
   private deviceManager!: VirtualDeviceManager;
   private audioContext: AudioContext | null = null;
   private analyzer: AnalyserNode | null = null;
+  private audioProcessor: AudioProcessor;
 
   constructor() {
     super();
     this.initDeviceManager();
+    this.audioProcessor = new AudioProcessor();
   }
 
   private async initDeviceManager() {
@@ -79,19 +82,25 @@ export class AudioStreamTester extends EventEmitter {
         };
       }
 
-      // 2. 测试麦克风信号
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: { exact: physicalMic.deviceId }
-        }
-      });
+      // 2. 启动音频处理
+      await this.audioProcessor.setupMicrophoneRoute(physicalMic.deviceId);
 
-      return await this.testAudioSignal(stream);
+      // 3. 等待处理完成
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      return {
+        success: true,
+        message: '麦克风测试完成'
+      };
+
     } catch (error) {
+      console.error('麦克风测试失败:', error);
       return {
         success: false,
         message: '麦克风测试失败: ' + (error instanceof Error ? error.message : '未知错误')
       };
+    } finally {
+      this.audioProcessor?.stop();
     }
   }
 
@@ -175,5 +184,7 @@ export class AudioStreamTester extends EventEmitter {
     this.audioContext?.close();
     this.audioContext = null;
     this.analyzer = null;
+    this.audioProcessor?.dispose();
+    this.audioProcessor = null;
   }
 } 

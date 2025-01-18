@@ -9,6 +9,7 @@
 import { EventEmitter } from '@/utils/EventEmitter';
 import { Logger } from '@/utils/Logger';
 import { VirtualDeviceManager } from './VirtualDeviceManager';
+import { GeminiService } from '../llm/GeminiService';
 
 export class AudioProcessor extends EventEmitter {
   private logger: Logger;
@@ -39,20 +40,51 @@ export class AudioProcessor extends EventEmitter {
           noiseSuppression: false
         }
       });
+      console.log('麦克风流:', this.microphoneStream);
 
       // 2. 设置音频处理
       this.audioContext = new AudioContext();
       
       // 3. 加载并创建 AudioWorklet
+      console.log('开始加载 AudioWorklet...');
       await this.audioContext.audioWorklet.addModule('/src/worklets/translator-worklet.ts');
-      this.workletNode = new AudioWorkletNode(this.audioContext, 'translator-processor');
-
-      // 4. 设置消息处理
-      this.workletNode.port.onmessage = (event) => {
-        // TODO: 处理来自 worklet 的消息
-        console.log('Received message from worklet:', event.data);
-      };
+      console.log('AudioWorklet 加载完成');
       
+      this.workletNode = new AudioWorkletNode(this.audioContext, 'translator-processor');
+      console.log('AudioWorkletNode 创建完成');
+
+      // 4. 启动音频收集和设置消息处理
+      this.workletNode.port.onmessage = async (event) => {
+        console.log('收到 worklet 消息:', event.data.type);
+        
+        if (event.data.type === 'audioData') {
+          try {
+            console.log('开始处理音频数据，数据长度:', event.data.data.length);
+            const llmService = new GeminiService('YOUR_GEMINI_API_ENDPOINT');
+            const result = await llmService.transcribeAudio(event.data.data);
+            console.log('转录结果:', result);
+            
+          } catch (error) {
+            console.error('音频转录失败:', error);
+          }
+        } else if (event.data.type === 'error') {
+          console.error('Worklet 处理错误:', event.data.error);
+        }
+      };
+
+      // 先发送开始收集的消息
+      console.log('发送开始收集命令');
+      this.workletNode.port.postMessage({ type: 'startCollecting' });
+
+      // 10秒后停止收集
+      setTimeout(() => {
+        if (this.workletNode) {
+          console.log('准备停止收集音频数据');
+          this.workletNode.port.postMessage({ type: 'stopCollecting' });
+          console.log('已发送停止收集命令');
+        }
+      }, 10000);
+
       // 5. 连接音频节点
       const source = this.audioContext.createMediaStreamSource(this.microphoneStream);
       const destination = this.audioContext.createMediaStreamDestination();
@@ -66,6 +98,7 @@ export class AudioProcessor extends EventEmitter {
       await audio.play();
 
     } catch (error) {
+      console.error('设置麦克风路由失败:', error);
       this.emit('error', error);
     }
   }
