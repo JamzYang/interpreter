@@ -1,11 +1,14 @@
 import { Logger } from '@/utils/Logger';
-
+import { deviceUtils } from "@/utils/device";
+import { VirtualDeviceManager } from "./VirtualDeviceManager";
 export class AudioContextManager {
   private logger: Logger;
   private audioContext: AudioContext;
   private workletNode?: AudioWorkletNode;
   private microphoneStream?: MediaStream;
   private cableStream?: MediaStream;
+  private cableOutputDestination?: MediaStreamAudioDestinationNode;
+  // private virtualDeviceManager: VirtualDeviceManager;
 
   constructor() {
     this.logger = new Logger('AudioContextManager');
@@ -14,8 +17,20 @@ export class AudioContextManager {
 
   async initialize() {
     try {
+      // 1. 初始化 AudioWorklet
       await this.audioContext.audioWorklet.addModule('/src/worklets/translator-worklet.ts');
       this.workletNode = new AudioWorkletNode(this.audioContext, 'translator-processor');
+      
+      // 2. 设置 CABLE Output
+      const devices = await deviceUtils.getAudioDevices();
+      //label 包含 Default 的设备,且kind为audioinput
+      const defaultDevice = devices.find(device => device.label.includes('Default') && device.kind === 'audioinput');
+      if (!defaultDevice) {
+        throw new Error('未找到默认录音设备');
+      }
+      
+      await this.setupCableOutput(defaultDevice.id);
+      
       this.logger.debug('AudioContextManager 初始化完成');
     } catch (error) {
       this.logger.error('AudioContextManager 初始化失败:', error);
@@ -80,6 +95,35 @@ export class AudioContextManager {
     }
   }
 
+  async setupCableOutput(cableOutputId: string) {
+    try {
+      // 创建目标节点
+      this.cableOutputDestination = this.audioContext.createMediaStreamDestination();
+      
+      // 创建音频元素并连接到 CABLE Output
+      const audio = new Audio();
+      audio.srcObject = this.cableOutputDestination.stream;
+      
+      // 使用传入的 CABLE Output 设备 ID
+      if ('setSinkId' in audio) {
+        await audio.setSinkId(cableOutputId);
+      }
+      
+      await audio.play();
+      return this.cableOutputDestination;
+    } catch (error) {
+      this.logger.error('设置 CABLE Output 失败:', error);
+      throw error;
+    }
+  }
+
+  getCableOutputDestination(): AudioNode {
+    if (!this.cableOutputDestination) {
+      throw new Error('CABLE Output 未初始化');
+    }
+    return this.cableOutputDestination;
+  }
+
   dispose() {
     try {
       this.microphoneStream?.getTracks().forEach(track => track.stop());
@@ -91,5 +135,15 @@ export class AudioContextManager {
     } catch (error) {
       this.logger.error('清理 AudioContextManager 资源失败:', error);
     }
+  }
+
+  async decodeAudioData(audioBuffer: ArrayBuffer): Promise<AudioBuffer> {
+    return await this.audioContext.decodeAudioData(audioBuffer);
+  }
+
+  createBufferSource(buffer: AudioBuffer): AudioBufferSourceNode {
+    const source = this.audioContext.createBufferSource();
+    source.buffer = buffer;
+    return source;
   }
 } 

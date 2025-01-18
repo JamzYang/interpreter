@@ -62,11 +62,30 @@ export class AudioProcessor extends EventEmitter {
     try {
       this.logger.debug('开始处理音频数据，数据长度:', audioData.length);
       const llmService = new GeminiService('YOUR_GEMINI_API_ENDPOINT');
-      const result = await llmService.transcribeAudio(audioData);
-      this.logger.info('转录结果:', result);
-      this.emit('transcription', result);
+      
+      // 1. 转录音频为文本
+      const transcribedText = await llmService.transcribeAudio(audioData);
+      this.logger.info('转录结果:', transcribedText);
+      this.emit('transcription', transcribedText);
+
+      // 2. 将文本转换为语音
+      const audioBuffer = await llmService.textToAudio(transcribedText);
+      console.log('TTS API 调用结束');
+
+      // 3. 使用 AudioContextManager 的 AudioContext 解码音频数据
+      const decodedAudio = await this.audioContextManager.decodeAudioData(audioBuffer);
+      
+      // 4. 创建音频源并连接到 CABLE Output
+      const source = this.audioContextManager.createBufferSource(decodedAudio);
+      const cableOutput = this.audioContextManager.getCableOutputDestination();
+      console.log('CABLE Output 设备:', cableOutput);
+      
+      source.connect(cableOutput);
+      source.start();
+      this.logger.info('开始播放转换后的语音');
+
     } catch (error) {
-      this.logger.error('音频转录失败:', error);
+      console.error('音频处理失败:', error);
       this.emit('error', error);
     }
   }
@@ -85,7 +104,8 @@ export class AudioProcessor extends EventEmitter {
       await audio.play();
       
     } catch (error) {
-      this.logger.error('设置麦克风路由失败:', error);
+      // this.logger.error('设置麦克风路由失败:', error);
+      console.error('设置麦克风路由失败:', error);
       this.emit('error', error);
     }
   }
@@ -125,7 +145,7 @@ export class AudioProcessor extends EventEmitter {
       await this.setupMicrophoneRoute(inputId);
       
       // 2. 设置 CABLE Input 到扬声器的路由
-      await this.setupSpeakerRoute(outputId);
+      // await this.setupSpeakerRoute(outputId);  todo 这里后面再实现
 
       this.emit('started');
     } catch (error) {
