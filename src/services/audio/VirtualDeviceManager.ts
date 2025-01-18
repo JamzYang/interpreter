@@ -1,11 +1,12 @@
 /**
- * 虚拟设备管理器
+ * VB-CABLE设备管理器
  * 
- * 核心功能:
- * 1. 检测VB-CABLE设备
- * 2. 管理设备状态
- * 3. 处理设备连接/断开
- * 4. 设备配置管理
+ * 核心职责:
+ * 1. 检测和管理VB-CABLE设备
+ * 2. 确保系统设置正确:
+ *    - CABLE Input 为系统默认播放设备
+ *    - CABLE Output 为系统默认录制设备
+ * 3. 监控VB-CABLE设备状态变化
  */
 import { DeviceStatus } from "@/types/device";
 import { MediaDevice } from "@/types/device";
@@ -491,6 +492,5 @@ export class VirtualDeviceManager extends EventEmitter {
         this.emit('deviceChange');
     }
 }
-
 // 录制状态类型
 type RecordingState = 'inactive' | 'recording' | 'paused';

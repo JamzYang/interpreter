@@ -1,11 +1,10 @@
 /**
  * 音频处理器
  * 
- * 核心功能:
+ * 核心职责:
  * 1. 从物理麦克风读取 → 处理 → 输出到 CABLE Output
- * 2. 音频数据处理和转换
- * 3. 从 CABLE Input 读取 → 处理 → 输出到物理扬声器
- * 4. 音频缓冲区管理
+ * 2. 从 CABLE Input 读取 → 处理 → 输出到物理扬声器
+ * 3. 音频数据处理和转换（未来用于LLM翻译）
  */ 
 import { EventEmitter } from '@/utils/EventEmitter';
 import { Logger } from '@/utils/Logger';

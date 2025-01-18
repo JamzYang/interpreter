@@ -8,6 +8,15 @@ export interface TestResult {
   message?: string;
 }
 
+/**
+ * 音频测试工具
+ * 
+ * 核心职责:
+ * 1. 测试完整音频链路:
+ *    [物理麦克风] → [APP] → [CABLE Output] → [CABLE Input] → [APP] → [物理扬声器]
+ * 2. 验证音频质量
+ * 3. 检测设备连接状态
+ */
 export class AudioStreamTester extends EventEmitter {
   private deviceManager!: VirtualDeviceManager;
   private audioContext: AudioContext | null = null;
