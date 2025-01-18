@@ -3,6 +3,8 @@ import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import os from 'node:os'
+import { join } from 'path'
+import { readFileSync } from 'fs'
 
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -117,4 +119,10 @@ ipcMain.handle('open-win', (_, arg) => {
   } else {
     childWindow.loadFile(indexHtml, { hash: arg })
   }
+})
+
+// 添加 IPC 处理器
+ipcMain.handle('read-test-audio', () => {
+  const testAudioPath = join(process.cwd(), 'public', 'test_voice.wav')
+  return readFileSync(testAudioPath).buffer
 })

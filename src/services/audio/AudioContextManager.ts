@@ -23,13 +23,14 @@ export class AudioContextManager {
       
       // 2. 设置 CABLE Output
       const devices = await deviceUtils.getAudioDevices();
-      //label 包含 Default 的设备,且kind为audioinput
-      const defaultDevice = devices.find(device => device.label.includes('Default') && device.kind === 'audioinput');
+      const defaultDevice = devices.find(device => device.label.includes('CABLE Output') && device.kind === 'audioinput');
       if (!defaultDevice) {
         throw new Error('未找到默认录音设备');
       }
+      console.log('找到的虚拟录制设备:', defaultDevice);
       
-      await this.setupCableOutput(defaultDevice.id);
+      // 不要在初始化时就连接麦克风
+      // this.setupMicrophoneRoute(macfengDevice.id);
       
       this.logger.debug('AudioContextManager 初始化完成');
     } catch (error) {
@@ -51,18 +52,27 @@ export class AudioContextManager {
     }
 
     try {
+      // 先停止之前的流
+      this.microphoneStream?.getTracks().forEach(track => track.stop());
+
       this.microphoneStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: { exact: deviceId },
-          echoCancellation: false,
-          noiseSuppression: false
+          echoCancellation: true,  // 启用回声消除
+          noiseSuppression: true,  // 启用噪声抑制
+          autoGainControl: true    // 启用自动增益控制
         }
       });
 
       const source = this.audioContext.createMediaStreamSource(this.microphoneStream);
       const destination = this.audioContext.createMediaStreamDestination();
       
-      source.connect(this.workletNode);
+      // 添加音量控制
+      const gainNode = this.audioContext.createGain();
+      gainNode.gain.value = 0.5; // 降低增益以减少反馈
+      
+      source.connect(gainNode);
+      gainNode.connect(this.workletNode);
       this.workletNode.connect(destination);
       
       return destination.stream;
@@ -145,5 +155,9 @@ export class AudioContextManager {
     const source = this.audioContext.createBufferSource();
     source.buffer = buffer;
     return source;
+  }
+
+  getAudioContext(): AudioContext {
+    return this.audioContext;
   }
 } 

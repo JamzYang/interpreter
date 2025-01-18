@@ -9,6 +9,8 @@ export default {
   },
   testMatch: [
     '**/tests/**/*.spec.[jt]s?(x)',
+    '**/tests/**/*.test.[jt]s?(x)',
     '**/__tests__/*.[jt]s?(x)'
-  ]
+  ],
+  setupFiles: ['<rootDir>/tests/setup.js']
 }; 

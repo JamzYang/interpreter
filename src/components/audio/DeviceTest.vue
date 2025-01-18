@@ -68,13 +68,27 @@
 
       <!-- 测试结果 -->
       <div v-else class="test-result">
+        <!-- 添加调试信息 -->
+        <div>当前步骤: {{ currentStep }}</div>
+        <div>测试通过: {{ testPassed }}</div>
+        
         <el-result
           :icon="testPassed ? 'success' : 'error'"
           :title="testPassed ? '测试通过' : '测试失败'"
           :sub-title="resultMessage"
         >
           <template #extra>
-            <el-button type="primary" @click="restartTest">重新测试</el-button>
+            <div class="button-group">
+              <el-button type="primary" @click="restartTest">重新测试</el-button>
+              <el-button 
+                type="success" 
+                @click="runAudioTest"
+                :loading="isTestRunning"
+                :disabled="!testPassed"
+              >
+                运行音频测试
+              </el-button>
+            </div>
           </template>
         </el-result>
       </div>
@@ -98,10 +112,10 @@
 <script setup lang="ts">
 import type { ElStep, ElSteps, ElButton, ElCheckbox, ElRadioGroup, ElRadio, ElResult, ElIcon } from 'element-plus'
 import { ref, computed, onUnmounted, onMounted } from 'vue'
+import { AudioService, AudioServiceStatus } from '@/services/audio/AudioService'
 import { AudioStreamTester } from '@/services/audio/AudioStreamTester'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
-import { AudioProcessor } from '@/services/audio/AudioProcessor'
 
 // 声明组件的 props 类型
 declare module 'vue' {
@@ -116,6 +130,7 @@ declare module 'vue' {
     ElIcon: typeof ElIcon
   }
 }
+
 
 const currentStep = ref(0)
 const volumeLevel = ref(0)
@@ -137,47 +152,50 @@ const canProceed = computed(() => {
 const hasDetectedVoice = ref(false)
 const testPassed = ref(false)
 const resultMessage = ref('')
-
 const tester = new AudioStreamTester()
-const audioProcessor = new AudioProcessor()
 const recordingStatus = ref('未录音')
-const isProcessorInitialized = ref(false)
+const audioService = ref<AudioService>(null)
+const isServiceReady = ref(false)
 
-// 初始化音频处理器
-const initAudioProcessor = async () => {
+// 初始化音频服务
+const initAudioService = async () => {
   try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
+    audioService.value = await AudioService.getInstance()
+    
+    // 监听状态变化
+    audioService.value.on('statusChange', (status) => {
+      isServiceReady.value = status === AudioServiceStatus.READY
+    })
+
+    const devices = await audioService.value.getAvailableDevices()
     const physicalMics = devices.filter(d => 
-      d.kind === 'audioinput' && !d.label.includes('VB-Audio')
-    );
+      d.kind === 'audioinput' && d.label.includes('麦克风')
+    )
     const physicalSpeakers = devices.filter(d => 
-      d.kind === 'audiooutput' && !d.label.includes('VB-Audio')
-    );
+      d.kind === 'audiooutput' && d.label.includes('扬声器')
+    )
 
     if (physicalMics.length > 0 && physicalSpeakers.length > 0) {
-      // 获取保存的设备选择或使用默认设备
-      const savedSelection = audioProcessor.getSavedDeviceSelection();
-      let inputId = physicalMics[0].deviceId;
-      let outputId = physicalSpeakers[0].deviceId;
-
-      if (savedSelection) {
-        if (physicalMics.some(d => d.deviceId === savedSelection.inputId)) {
-          inputId = savedSelection.inputId;
-        }
-        if (physicalSpeakers.some(d => d.deviceId === savedSelection.outputId)) {
-          outputId = savedSelection.outputId;
-        }
-      }
-
-      await audioProcessor.start(inputId, outputId);
-      audioProcessor.saveDeviceSelection(inputId, outputId);
-      isProcessorInitialized.value = true;
-      console.log('音频处理器初始化成功');
+      await audioService.value.setDevices(
+        physicalMics[0].deviceId,
+        physicalSpeakers[0].deviceId
+      )
+      await audioService.value.switchInputDevice(physicalMics[0].id)
+      isServiceReady.value = true
+      console.log('音频服务初始化成功')
     }
   } catch (error) {
-    console.error('初始化音频处理器失败:', error);
+    console.error('初始化音频服务失败:', error)
+    ElMessage.error('初始化音频设备失败，请检查设备连接')
   }
-};
+}
+
+// 在组件挂载时也尝试初始化
+onMounted(async () => {
+  console.log('组件挂载，尝试初始化音频服务')
+  await initAudioService()
+
+})
 
 // 步骤控制
 const nextStep = async () => {
@@ -208,28 +226,27 @@ const nextStep = async () => {
             }
           }
 
-          await audioProcessor.start(inputId, outputId);
-          // 保存新的选择
-          audioProcessor.saveDeviceSelection(inputId, outputId);
           console.log('音频处理器初始化成功');
-          currentStep.value++;
+          console.log('Moving to next step:', currentStep.value + 1)
+          currentStep.value++
         } else {
           ElMessage.error('未找到可用的音频设备');
         }
       } catch (error) {
-        console.error('初始化音频处理器失败:', error);
-        ElMessage.error('初始化音频设备失败，请检查设备连接');
+        console.error('初始化音频处理器失败:', error)
+        ElMessage.error('初始化音频设备失败，请检查设备连接')
       }
     } else {
-      currentStep.value++;
+      console.log('Moving to next step:', currentStep.value + 1)
+      currentStep.value++
       if (currentStep.value === 1) {
-        startVoiceTest();
+        startVoiceTest()
       } else if (currentStep.value === 2) {
-        startPlaybackTest();
+        startPlaybackTest()
       }
     }
   }
-};
+}
 
 const prevStep = () => {
   if (currentStep.value > 0) {
@@ -277,9 +294,12 @@ const finishTest = async () => {
     : '音频设备可能存在问题，请检查设置'
   currentStep.value = 3
   
-  if (testPassed.value) {
-    await initAudioProcessor();
-  }
+  // 添加调试日志
+  console.log('Test finished:', {
+    testPassed: testPassed.value,
+    currentStep: currentStep.value,
+    hearSound: hearSound.value
+  })
 }
 
 // 重新测试
@@ -301,30 +321,62 @@ const restartTest = () => {
 }
 
 const startRecording = async () => {
-  if (!isProcessorInitialized.value) {
-    await initAudioProcessor();
+  if (!isServiceReady.value) {
+    await initAudioService()
   }
   
-  if (isProcessorInitialized.value) {
-    recordingStatus.value = '正在录音...';
-    audioProcessor.startCollecting();
+  if (isServiceReady.value && audioService.value) {
+    recordingStatus.value = '正在录音...'
+    try {
+      await audioService.value.startRecording()
+    } catch (error) {
+      recordingStatus.value = '未录音'
+      ElMessage.error('开始录音失败')
+    }
   } else {
-    ElMessage.error('音频设备未就绪，请先完成设备测试');
+    ElMessage.error('音频设备未就绪，请先完成设备测试')
   }
-};
+}
 
-const stopRecording = () => {
-  if (isProcessorInitialized.value) {
-    recordingStatus.value = '未录音';
-    audioProcessor.stopCollecting();
+const stopRecording = async () => {
+  console.log('stopRecording......', new Date().toISOString())
+  // if (isServiceReady.value && audioService.value) {
+    try {
+      await audioService.value.stopRecording()
+      recordingStatus.value = '未录音'
+    } catch (error) {
+      ElMessage.error('停止录音失败')
+    }
+  // }
+}
+
+// 添加新的状态
+const isTestRunning = ref(false)
+
+// 添加音频测试函数
+const runAudioTest = async () => {
+  try {
+    isTestRunning.value = true
+    const result = await tester.playTestAudio()
+    
+    if (result.success) {
+      ElMessage.success(result.message)
+    } else {
+      ElMessage.error(result.message)
+    }
+  } finally {
+    isTestRunning.value = false
   }
-};
+}
 
 // 组件卸载时清理
 onUnmounted(() => {
-  audioProcessor.dispose();
-  isProcessorInitialized.value = false;
-});
+  if (audioService.value) {
+    audioService.value.destroy()
+    audioService.value.removeAllListeners() // 移除所有事件监听
+  }
+  isServiceReady.value = false
+})
 </script>
 
 <style scoped>
@@ -382,5 +434,12 @@ onUnmounted(() => {
 .status-text {
   margin-top: 10px;
   color: #666;
+}
+
+.button-group {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 20px;
 }
 </style> 

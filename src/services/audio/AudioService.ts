@@ -35,7 +35,7 @@ export class AudioService extends EventEmitter {
   private static instance: AudioService;
   private static initPromise: Promise<AudioService>;
   private deviceManager!: VirtualDeviceManager;
-  private audioProcessor: AudioProcessor | null = null;
+  private audioProcessor: AudioProcessor = new AudioProcessor();
   private status: AudioServiceStatus = AudioServiceStatus.INITIALIZING;
   private logger: Logger;
   private currentInputId: string = '';
@@ -58,8 +58,7 @@ export class AudioService extends EventEmitter {
   private async initializeService() {
     try {
       this.deviceManager = await VirtualDeviceManager.getInstance();
-      this.audioProcessor = new AudioProcessor();
-      
+      await this.audioProcessor.initialize();
       this.deviceManager.on('deviceChange', this.handleDeviceChange.bind(this));
       this.deviceManager.on('error', this.handleDeviceError.bind(this));
       
@@ -96,31 +95,34 @@ export class AudioService extends EventEmitter {
   // 音频处理流程控制
   public async startRecording(): Promise<void> {
     try {
-      if (this.status !== AudioServiceStatus.READY) {
-        throw new Error('AudioService is not ready');
-      }
+      // if (this.status !== AudioServiceStatus.READY) {
+      //   throw new Error('AudioService is not ready');
+      // }
       
       if (this.audioProcessor) {
-        await this.audioProcessor.start(this.currentInputId, this.currentOutputId);
+        await this.audioProcessor.startCollecting();
         this.setStatus(AudioServiceStatus.RECORDING);
         this.emit(AudioServiceEvent.RECORDING_START);
       }
     } catch (error) {
+      this.setStatus(AudioServiceStatus.READY);
       this.handleError('Failed to start recording', error);
+      throw error;
     }
   }
 
   public async stopRecording(): Promise<void> {
     try {
       if (this.status !== AudioServiceStatus.RECORDING) {
-        throw new Error('Not currently recording');
+        return;
       }
       
-      this.audioProcessor?.stop();
+      this.audioProcessor.stopCollecting();
       this.setStatus(AudioServiceStatus.READY);
       this.emit(AudioServiceEvent.RECORDING_STOP);
     } catch (error) {
       this.handleError('Failed to stop recording', error);
+      throw error;
     }
   }
 
@@ -154,13 +156,8 @@ export class AudioService extends EventEmitter {
   }
 
   // 设备管理接口
-  public async switchInputDevice(deviceId: string): Promise<void> {
-    // try {
-    //   await this.deviceManager.setInputDevice(deviceId);
-    //   await this.audioProcessor?.updateInputDevice(deviceId);
-    // } catch (error) {
-    //   this.handleError('Failed to switch input device', error);
-    // }
+  public async switchInputDevice(inputDeviceId: string): Promise<void> {
+    this.audioProcessor.getAudioContextManager().setupMicrophoneRoute(inputDeviceId)
   }
 
   public async getAvailableDevices(): Promise<MediaDevice[]> {

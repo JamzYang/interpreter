@@ -1,6 +1,5 @@
 import { EventEmitter } from '@/utils/EventEmitter';
-import { VirtualDeviceManager } from './VirtualDeviceManager';
-import { AudioProcessor } from './AudioProcessor';
+import { AudioService } from './AudioService';
 
 export interface TestResult {
   success: boolean;
@@ -19,19 +18,15 @@ export interface TestResult {
  * 3. 检测设备连接状态
  */
 export class AudioStreamTester extends EventEmitter {
-  private deviceManager!: VirtualDeviceManager;
-  private audioContext: AudioContext | null = null;
-  private analyzer: AnalyserNode | null = null;
-  private audioProcessor: AudioProcessor;
+  private audioService: AudioService;
 
   constructor() {
     super();
-    this.initDeviceManager();
-    this.audioProcessor = new AudioProcessor();
+    this.initService();
   }
 
-  private async initDeviceManager() {
-    this.deviceManager = await VirtualDeviceManager.getInstance();
+  private async initService() {
+    this.audioService = await AudioService.getInstance();
   }
 
   /**
@@ -69,8 +64,12 @@ export class AudioStreamTester extends EventEmitter {
    */
   public async testMicrophoneToOutput(): Promise<TestResult> {
     try {
-      // 1. 获取物理麦克风
-      const devices = await navigator.mediaDevices.enumerateDevices();
+      if (!this.audioService) {
+        throw new Error('音频服务未初始化');
+      }
+
+      // 通过 AudioService 获取设备
+      const devices = await this.audioService.getAvailableDevices();
       const physicalMic = devices.find(d => 
         d.kind === 'audioinput' && !d.label.includes('VB-Audio')
       );
@@ -82,11 +81,13 @@ export class AudioStreamTester extends EventEmitter {
         };
       }
 
-      // 2. 启动音频处理
-      await this.audioProcessor.setupMicrophoneRoute(physicalMic.deviceId);
+      // 使用 AudioService 进行测试
+      await this.audioService.setDevices(physicalMic.deviceId, '');
+      await this.audioService.startRecording();
 
-      // 3. 等待处理完成
+      // 等待测试完成
       await new Promise(resolve => setTimeout(resolve, 5000));
+      await this.audioService.stopRecording();
 
       return {
         success: true,
@@ -99,8 +100,6 @@ export class AudioStreamTester extends EventEmitter {
         success: false,
         message: '麦克风测试失败: ' + (error instanceof Error ? error.message : '未知错误')
       };
-    } finally {
-      this.audioProcessor?.stop();
     }
   }
 
@@ -180,11 +179,56 @@ export class AudioStreamTester extends EventEmitter {
     });
   }
 
+  /**
+   * 播放测试音频到 CABLE Output
+   */
+  public async playTestAudio(): Promise<TestResult> {
+    try {
+      // 1. 读取测试音频文件
+      const audioBuffer = await window.electronAPI.readTestAudioFile()
+      
+      // 2. 创建音频上下文和节点
+      if (!this.audioContext) {
+        this.audioContext = new AudioContext()
+      }
+      
+      // 3. 解码音频数据
+      const decodedAudio = await this.audioContext.decodeAudioData(audioBuffer)
+      
+      // 4. 创建音频源并连接到 CABLE Output
+      const source = this.audioContext.createBufferSource()
+      source.buffer = decodedAudio
+      source.connect(this.audioContext.destination)
+      
+      // 5. 播放音频
+      source.start()
+      
+      // 6. 等待音频播放完成
+      await new Promise<void>((resolve) => {
+        source.onended = () => resolve()
+      })
+
+      return {
+        success: true,
+        message: '测试音频播放完成'
+      }
+    } catch (error) {
+      console.error('测试音频播放失败:', error)
+      return {
+        success: false,
+        message: '测试音频播放失败: ' + (error instanceof Error ? error.message : '未知错误')
+      }
+    }
+  }
+
   dispose(): void {
     this.audioContext?.close();
     this.audioContext = null;
     this.analyzer = null;
-    this.audioProcessor?.dispose();
-    this.audioProcessor = null;
+    if (this.audioProcessor) {
+      this.audioProcessor.dispose();
+      // @ts-ignore: 允许将 audioProcessor 设置为 null
+      this.audioProcessor = null;
+    }
   }
 } 

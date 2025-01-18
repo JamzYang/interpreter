@@ -23,7 +23,7 @@ export class GeminiService implements LLMService {
             data: audioBase64
           }
         },
-        { text: "Generate a transcript of the speech." },
+        { text: "Generate a text transcript of the voice and translate it into English." },
       ]);
 
 // Print the response.
@@ -43,7 +43,7 @@ export class GeminiService implements LLMService {
           model: 'kokoro',
           input: text,
           voice: 'af',
-          response_format: 'mp3',
+          response_format: 'wav',
           speed: 1,
           stream: true
         })

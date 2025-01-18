@@ -28,6 +28,45 @@ export class AudioProcessor extends EventEmitter {
     this.audioContextManager = new AudioContextManager();
   }
 
+  private setupWorkletMessageHandler() {
+    const workletNode = this.audioContextManager.getWorkletNode();
+    if (workletNode) {
+      workletNode.port.onmessage = async (event) => {
+        if (event.data.type === 'audioData') {
+          try {
+            const llmService = new GeminiService('YOUR_GEMINI_API_ENDPOINT');
+            
+            // 处理音频数据
+            const transcribedText = await llmService.transcribeAudio(event.data.data);
+            console.log('转录结果:', transcribedText, new Date().toISOString());
+            // 获取TTS音频数据并解码
+            const ttsBuffer = await llmService.textToAudio(transcribedText);
+            console.log('text转音频完成', new Date().toISOString());
+            const audioBuffer = await this.audioContextManager.getAudioContext().decodeAudioData(ttsBuffer);
+            console.log('音频数据解码完成', new Date().toISOString());
+            
+            // 转换为 Float32Array
+            const outputBuffer = new Float32Array(audioBuffer.length);
+            audioBuffer.copyFromChannel(outputBuffer, 0, 0);
+            
+            // 将解码后的音频数据发送回 worklet
+            workletNode.port.postMessage({
+              type: 'processedAudio',
+              data: outputBuffer
+            });
+            
+          } catch (error) {
+            console.error('音频处理失败:', error);
+            workletNode.port.postMessage({
+              type: 'error',
+              error: error instanceof Error ? error.message : '音频处理失败'
+            });
+          }
+        }
+      };
+    }
+  }
+
   async initialize(): Promise<void> {
     if (this.state !== 'idle') {
       throw new Error('AudioProcessor 已经初始化或正在使用中');
@@ -36,7 +75,8 @@ export class AudioProcessor extends EventEmitter {
     this.state = 'initializing';
     try {
       await this.audioContextManager.initialize();
-      this.setupWorkletEventListeners();
+      // 添加 worklet 消息处理
+      this.setupWorkletMessageHandler();
       this.state = 'active';
     } catch (error) {
       this.state = 'idle';
@@ -44,51 +84,9 @@ export class AudioProcessor extends EventEmitter {
     }
   }
 
-  private setupWorkletEventListeners() {
-    const workletNode = this.audioContextManager.getWorkletNode();
-    workletNode.port.onmessage = async (event) => {
-      this.logger.debug('收到 worklet 消息:', event.data.type);
-      
-      if (event.data.type === 'audioData') {
-        await this.processAudioData(event.data.data);
-      } else if (event.data.type === 'error') {
-        this.logger.error('Worklet 处理错误:', event.data.error);
-        this.emit('error', event.data.error);
-      }
-    };
-  }
 
-  private async processAudioData(audioData: string) {
-    try {
-      this.logger.debug('开始处理音频数据，数据长度:', audioData.length);
-      const llmService = new GeminiService('YOUR_GEMINI_API_ENDPOINT');
-      
-      // 1. 转录音频为文本
-      const transcribedText = await llmService.transcribeAudio(audioData);
-      this.logger.info('转录结果:', transcribedText);
-      this.emit('transcription', transcribedText);
 
-      // 2. 将文本转换为语音
-      const audioBuffer = await llmService.textToAudio(transcribedText);
-      console.log('TTS API 调用结束');
-
-      // 3. 使用 AudioContextManager 的 AudioContext 解码音频数据
-      const decodedAudio = await this.audioContextManager.decodeAudioData(audioBuffer);
-      
-      // 4. 创建音频源并连接到 CABLE Output
-      const source = this.audioContextManager.createBufferSource(decodedAudio);
-      const cableOutput = this.audioContextManager.getCableOutputDestination();
-      console.log('CABLE Output 设备:', cableOutput);
-      
-      source.connect(cableOutput);
-      source.start();
-      this.logger.info('开始播放转换后的语音');
-
-    } catch (error) {
-      console.error('音频处理失败:', error);
-      this.emit('error', error);
-    }
-  }
+  
 
   // 从物理麦克风到 CABLE Output
   async setupMicrophoneRoute(deviceId: string): Promise<void> {
@@ -138,20 +136,6 @@ export class AudioProcessor extends EventEmitter {
     await this.initialize();
   }
 
-  // 开始音频处理
-  async start(inputId: string, outputId: string): Promise<void> {
-    try {
-      // 1. 设置麦克风到 CABLE Output 的路由
-      await this.setupMicrophoneRoute(inputId);
-      
-      // 2. 设置 CABLE Input 到扬声器的路由
-      // await this.setupSpeakerRoute(outputId);  todo 这里后面再实现
-
-      this.emit('started');
-    } catch (error) {
-      this.emit('error', error);
-    }
-  }
 
   // 停止音频处理
   stop(): void {
@@ -165,7 +149,7 @@ export class AudioProcessor extends EventEmitter {
     if (this.state !== 'active') {
       throw new Error('AudioProcessor 未初始化');
     }
-    this.logger.info('开始收集音频');
+    console.info('开始收集音频');
     this.audioContextManager.getWorkletNode().port.postMessage({ type: 'startCollecting' });
   }
 
@@ -173,7 +157,7 @@ export class AudioProcessor extends EventEmitter {
     if (this.state !== 'active') {
       throw new Error('AudioProcessor 未初始化');
     }
-    this.logger.info('停止收集音频');
+    console.info('停止收集音频');
     this.audioContextManager.getWorkletNode().port.postMessage({ type: 'stopCollecting' });
   }
 
@@ -187,5 +171,9 @@ export class AudioProcessor extends EventEmitter {
   getSavedDeviceSelection(): DeviceInfo | null {
     const saved = localStorage.getItem('audioDeviceSelection');
     return saved ? JSON.parse(saved) : null;
+  }
+
+  getAudioContextManager(): AudioContextManager {
+    return this.audioContextManager;
   }
 } 
