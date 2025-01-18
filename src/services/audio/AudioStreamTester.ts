@@ -64,7 +64,7 @@ export class AudioStreamTester extends EventEmitter {
   /**
    * 测试从物理麦克风到CABLE Output的链路
    */
-  private async testMicrophoneToOutput(): Promise<TestResult> {
+  public async testMicrophoneToOutput(): Promise<TestResult> {
     try {
       // 1. 获取物理麦克风
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -98,7 +98,7 @@ export class AudioStreamTester extends EventEmitter {
   /**
    * 测试从CABLE Input到物理扬声器的链路
    */
-  private async testInputToSpeaker(): Promise<TestResult> {
+  public async testInputToSpeaker(): Promise<TestResult> {
     try {
       // 1. 播放测试音到CABLE Input
       this.audioContext = new AudioContext();

@@ -75,6 +75,14 @@ export default defineConfig(({ command }) => {
       alias: {
         '@': path.resolve(__dirname, './src')
       }
+    },
+    build: {
+      rollupOptions: {
+        input: {
+          main: 'index.html',
+          'translator-worklet': 'src/worklets/translator-worklet.ts'
+        }
+      }
     }
   }
 })

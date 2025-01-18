@@ -44,7 +44,7 @@ export class AudioProcessor extends EventEmitter {
       this.audioContext = new AudioContext();
       
       // 3. 加载并创建 AudioWorklet
-      await this.audioContext.audioWorklet.addModule('/audio-processors/translator-worklet.js');
+      await this.audioContext.audioWorklet.addModule('/src/worklets/translator-worklet.ts');
       this.workletNode = new AudioWorkletNode(this.audioContext, 'translator-processor');
 
       // 4. 设置消息处理

@@ -17,7 +17,8 @@
       "@/*": ["src/*"]
     },
     "types": [
-      "element-plus/global"
+      "element-plus/global",
+      "@vue/runtime-core"
     ]
   },
   "include": ["src", "tests"],
