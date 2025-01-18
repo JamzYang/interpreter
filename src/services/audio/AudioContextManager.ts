@@ -7,7 +7,8 @@ export class AudioContextManager {
   private workletNode?: AudioWorkletNode;
   private microphoneStream?: MediaStream;
   private cableStream?: MediaStream;
-  private cableOutputDestination?: MediaStreamAudioDestinationNode;
+  private microphoneDestination?: MediaStreamAudioDestinationNode;
+  private speakerDestination?: MediaStreamAudioDestinationNode;
   // private virtualDeviceManager: VirtualDeviceManager;
 
   constructor() {
@@ -52,9 +53,11 @@ export class AudioContextManager {
     }
 
     try {
-      // 先停止之前的流
+      // 清理之前的连接
       this.microphoneStream?.getTracks().forEach(track => track.stop());
-
+      this.workletNode.disconnect();
+      console.log('开始获取麦克风输入', new Date().toISOString());
+      // 获取麦克风输入
       this.microphoneStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: { exact: deviceId },
@@ -63,46 +66,70 @@ export class AudioContextManager {
           autoGainControl: true    // 启用自动增益控制
         }
       });
-
+      console.log('开始获取麦克风输入2', new Date().toISOString());
+      // 创建节点
       const source = this.audioContext.createMediaStreamSource(this.microphoneStream);
-      const destination = this.audioContext.createMediaStreamDestination();
-      
-      // 添加音量控制
+      this.microphoneDestination = this.audioContext.createMediaStreamDestination();
       const gainNode = this.audioContext.createGain();
-      gainNode.gain.value = 0.5; // 降低增益以减少反馈
-      
+      gainNode.gain.value = 0.5;
+
+      // 连接: 麦克风 -> 增益 -> worklet -> MediaStreamDestination
       source.connect(gainNode);
       gainNode.connect(this.workletNode);
-      this.workletNode.connect(destination);
+      this.workletNode.connect(this.microphoneDestination);
       
-      return destination.stream;
+      // 创建音频元素并设置输出到 CABLE Input
+      const audio = new Audio();
+      audio.srcObject = this.microphoneDestination.stream;
+      
+      // 获取 CABLE Input 设备（这是输出设备）
+      const devices = await deviceUtils.getAudioDevices();
+      const cableInput = devices.find(d => 
+        d.kind === 'audiooutput' && d.label.includes('CABLE Input')  // 找到虚拟声卡的输出端
+      );
+      
+      if (cableInput && 'setSinkId' in audio) {
+        await audio.setSinkId(cableInput.id);  // 设置音频输出到 CABLE Input
+      }
+      
+      await audio.play();
+      
+      return this.microphoneDestination.stream;
     } catch (error) {
-      this.logger.error('设置麦克风路由失败:', error);
+      console.error('设置麦克风路由失败:', error);
       throw error;
     }
   }
 
   async setupSpeakerRoute(outputId: string): Promise<MediaStream> {
-    if (!this.workletNode) {
-      throw new Error('AudioWorkletNode 未初始化');
-    }
+    // if (!this.workletNode) {
+    //   throw new Error('AudioWorkletNode 未初始化');
+    // }
 
-    try {
-      this.cableStream = await navigator.mediaDevices.getUserMedia({ 
-        audio: true  // 使用系统默认设备 (CABLE Input)
-      });
+    // try {
+    //   // 清理之前的连接
+    //   this.cableStream?.getTracks().forEach(track => track.stop());
 
-      const source = this.audioContext.createMediaStreamSource(this.cableStream);
-      const destination = this.audioContext.createMediaStreamDestination();
-      
-      source.connect(this.workletNode);
-      this.workletNode.connect(destination);
-      
-      return destination.stream;
-    } catch (error) {
-      this.logger.error('设置扬声器路由失败:', error);
-      throw error;
-    }
+    //   // 获取 CABLE Input
+    //   this.cableStream = await navigator.mediaDevices.getUserMedia({
+    //     audio: {
+    //       deviceId: { exact: outputId }  // 指定 CABLE Input
+    //     }
+    //   });
+
+    //   // 创建节点
+    //   const source = this.audioContext.createMediaStreamSource(this.cableStream);
+    //   this.speakerDestination = this.audioContext.createMediaStreamDestination();
+
+    //   // 连接: CABLE Input -> worklet -> 物理扬声器
+    //   source.connect(this.workletNode);
+    //   this.workletNode.connect(this.audioContext.destination);
+
+    //   return this.speakerDestination.stream;
+    // } catch (error) {
+    //   this.logger.error('设置扬声器路由失败:', error);
+    //   throw error;
+    // }
   }
 
   async setupCableOutput(cableOutputId: string) {

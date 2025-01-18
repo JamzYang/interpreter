@@ -28,6 +28,18 @@ export class AudioProcessor extends EventEmitter {
     this.audioContextManager = new AudioContextManager();
   }
 
+  // 添加一个计算最大音量的辅助方法
+  private calculateMaxVolume(buffer: Float32Array): number {
+    let maxVolume = 0;
+    for (let i = 0; i < buffer.length; i++) {
+      const absValue = Math.abs(buffer[i]);
+      if (absValue > maxVolume) {
+        maxVolume = absValue;
+      }
+    }
+    return maxVolume;
+  }
+
   private setupWorkletMessageHandler() {
     const workletNode = this.audioContextManager.getWorkletNode();
     if (workletNode) {
@@ -39,15 +51,44 @@ export class AudioProcessor extends EventEmitter {
             // 处理音频数据
             const transcribedText = await llmService.transcribeAudio(event.data.data);
             console.log('转录结果:', transcribedText, new Date().toISOString());
+            
             // 获取TTS音频数据并解码
             const ttsBuffer = await llmService.textToAudio(transcribedText);
             console.log('text转音频完成', new Date().toISOString());
-            const audioBuffer = await this.audioContextManager.getAudioContext().decodeAudioData(ttsBuffer);
-            console.log('音频数据解码完成', new Date().toISOString());
+
+            // 解码音频数据
+            const audioContext = this.audioContextManager.getAudioContext();
+            const audioBuffer = await audioContext.decodeAudioData(ttsBuffer);
+            console.log('音频数据解码完成', new Date().toISOString(), {
+              duration: audioBuffer.duration,
+              numberOfChannels: audioBuffer.numberOfChannels,
+              sampleRate: audioBuffer.sampleRate,
+              length: audioBuffer.length
+            });
             
-            // 转换为 Float32Array
+            // 确保采样率匹配
+            if (audioBuffer.sampleRate !== audioContext.sampleRate) {
+              console.warn('采样率不匹配:', {
+                buffer: audioBuffer.sampleRate,
+                context: audioContext.sampleRate
+              });
+            }
+
+            // 转换为 Float32Array，并处理音量
             const outputBuffer = new Float32Array(audioBuffer.length);
             audioBuffer.copyFromChannel(outputBuffer, 0, 0);
+
+            // 使用优化后的方法检查音频数据
+            const maxVolume = this.calculateMaxVolume(outputBuffer);
+            console.log('音频数据最大音量:', maxVolume);
+            
+            if (maxVolume < 0.01) {
+              console.warn('音频数据可能太小');
+              // 可以考虑增益处理
+              for (let i = 0; i < outputBuffer.length; i++) {
+                outputBuffer[i] *= 5; // 增益5倍
+              }
+            }
             
             // 将解码后的音频数据发送回 worklet
             workletNode.port.postMessage({
@@ -102,7 +143,6 @@ export class AudioProcessor extends EventEmitter {
       await audio.play();
       
     } catch (error) {
-      // this.logger.error('设置麦克风路由失败:', error);
       console.error('设置麦克风路由失败:', error);
       this.emit('error', error);
     }
