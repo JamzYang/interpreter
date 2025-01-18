@@ -11,6 +11,12 @@ import { Logger } from '@/utils/Logger';
 import { VirtualDeviceManager } from './VirtualDeviceManager';
 import { GeminiService } from '../llm/GeminiService';
 
+// 添加设备信息接口
+interface DeviceInfo {
+  inputId: string;
+  outputId: string;
+}
+
 export class AudioProcessor extends EventEmitter {
   private logger: Logger;
   private deviceManager!: VirtualDeviceManager;
@@ -53,7 +59,7 @@ export class AudioProcessor extends EventEmitter {
       this.workletNode = new AudioWorkletNode(this.audioContext, 'translator-processor');
       console.log('AudioWorkletNode 创建完成');
 
-      // 4. 启动音频收集和设置消息处理
+      // 4. 设置消息处理
       this.workletNode.port.onmessage = async (event) => {
         console.log('收到 worklet 消息:', event.data.type);
         
@@ -71,19 +77,6 @@ export class AudioProcessor extends EventEmitter {
           console.error('Worklet 处理错误:', event.data.error);
         }
       };
-
-      // 先发送开始收集的消息
-      console.log('发送开始收集命令');
-      this.workletNode.port.postMessage({ type: 'startCollecting' });
-
-      // 10秒后停止收集
-      setTimeout(() => {
-        if (this.workletNode) {
-          console.log('准备停止收集音频数据');
-          this.workletNode.port.postMessage({ type: 'stopCollecting' });
-          console.log('已发送停止收集命令');
-        }
-      }, 10000);
 
       // 5. 连接音频节点
       const source = this.audioContext.createMediaStreamSource(this.microphoneStream);
@@ -181,5 +174,33 @@ export class AudioProcessor extends EventEmitter {
     // 清理所有音频流和连接
     this.dispose();
     this.emit('stopped');
+  }
+
+  // 添加控制方法
+  startCollecting() {
+    console.log('开始收集音频startCollecting');
+    if (this.workletNode) {
+      console.log('开始收集音频');
+      this.workletNode.port.postMessage({ type: 'startCollecting' });
+    }
+  }
+
+  stopCollecting() {
+    if (this.workletNode) {
+      console.log('停止收集音频');
+      this.workletNode.port.postMessage({ type: 'stopCollecting' });
+    }
+  }
+
+  // 保存设备选择
+  saveDeviceSelection(inputId: string, outputId: string): void {
+    const deviceInfo: DeviceInfo = { inputId, outputId };
+    localStorage.setItem('audioDeviceSelection', JSON.stringify(deviceInfo));
+  }
+
+  // 获取保存的设备选择
+  getSavedDeviceSelection(): DeviceInfo | null {
+    const saved = localStorage.getItem('audioDeviceSelection');
+    return saved ? JSON.parse(saved) : null;
   }
 } 

@@ -79,15 +79,29 @@
         </el-result>
       </div>
     </div>
+
+    <!-- 添加按键控制区域 -->
+    <div class="voice-control">
+      <el-button 
+        type="primary"
+        @mousedown="startRecording"
+        @mouseup="stopRecording"
+        @mouseleave="stopRecording"
+      >
+        按住说话
+      </el-button>
+      <div class="status-text">{{ recordingStatus }}</div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { ElStep, ElSteps, ElButton, ElCheckbox, ElRadioGroup, ElRadio, ElResult, ElIcon } from 'element-plus'
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted, onMounted } from 'vue'
 import { AudioStreamTester } from '@/services/audio/AudioStreamTester'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
+import { AudioProcessor } from '@/services/audio/AudioProcessor'
 
 // 声明组件的 props 类型
 declare module 'vue' {
@@ -125,18 +139,97 @@ const testPassed = ref(false)
 const resultMessage = ref('')
 
 const tester = new AudioStreamTester()
+const audioProcessor = new AudioProcessor()
+const recordingStatus = ref('未录音')
+const isProcessorInitialized = ref(false)
+
+// 初始化音频处理器
+const initAudioProcessor = async () => {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const physicalMics = devices.filter(d => 
+      d.kind === 'audioinput' && !d.label.includes('VB-Audio')
+    );
+    const physicalSpeakers = devices.filter(d => 
+      d.kind === 'audiooutput' && !d.label.includes('VB-Audio')
+    );
+
+    if (physicalMics.length > 0 && physicalSpeakers.length > 0) {
+      // 获取保存的设备选择或使用默认设备
+      const savedSelection = audioProcessor.getSavedDeviceSelection();
+      let inputId = physicalMics[0].deviceId;
+      let outputId = physicalSpeakers[0].deviceId;
+
+      if (savedSelection) {
+        if (physicalMics.some(d => d.deviceId === savedSelection.inputId)) {
+          inputId = savedSelection.inputId;
+        }
+        if (physicalSpeakers.some(d => d.deviceId === savedSelection.outputId)) {
+          outputId = savedSelection.outputId;
+        }
+      }
+
+      await audioProcessor.start(inputId, outputId);
+      audioProcessor.saveDeviceSelection(inputId, outputId);
+      isProcessorInitialized.value = true;
+      console.log('音频处理器初始化成功');
+    }
+  } catch (error) {
+    console.error('初始化音频处理器失败:', error);
+  }
+};
 
 // 步骤控制
-const nextStep = () => {
+const nextStep = async () => {
   if (currentStep.value < 3) {
-    currentStep.value++
-    if (currentStep.value === 1) {
-      startVoiceTest()
-    } else if (currentStep.value === 2) {
-      startPlaybackTest()
+    if (currentStep.value === 0) {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const physicalMics = devices.filter(d => 
+          d.kind === 'audioinput' && !d.label.includes('VB-Audio')
+        );
+        const physicalSpeakers = devices.filter(d => 
+          d.kind === 'audiooutput' && !d.label.includes('VB-Audio')
+        );
+
+        if (physicalMics.length > 0 && physicalSpeakers.length > 0) {
+          // 获取保存的设备选择
+          const savedSelection = audioProcessor.getSavedDeviceSelection();
+          let inputId = physicalMics[0].deviceId;
+          let outputId = physicalSpeakers[0].deviceId;
+
+          // 如果有保存的选择且设备仍然可用，使用保存的选择
+          if (savedSelection) {
+            if (physicalMics.some(d => d.deviceId === savedSelection.inputId)) {
+              inputId = savedSelection.inputId;
+            }
+            if (physicalSpeakers.some(d => d.deviceId === savedSelection.outputId)) {
+              outputId = savedSelection.outputId;
+            }
+          }
+
+          await audioProcessor.start(inputId, outputId);
+          // 保存新的选择
+          audioProcessor.saveDeviceSelection(inputId, outputId);
+          console.log('音频处理器初始化成功');
+          currentStep.value++;
+        } else {
+          ElMessage.error('未找到可用的音频设备');
+        }
+      } catch (error) {
+        console.error('初始化音频处理器失败:', error);
+        ElMessage.error('初始化音频设备失败，请检查设备连接');
+      }
+    } else {
+      currentStep.value++;
+      if (currentStep.value === 1) {
+        startVoiceTest();
+      } else if (currentStep.value === 2) {
+        startPlaybackTest();
+      }
     }
   }
-}
+};
 
 const prevStep = () => {
   if (currentStep.value > 0) {
@@ -183,22 +276,55 @@ const finishTest = async () => {
     ? '音频设备工作正常，可以开始使用了'
     : '音频设备可能存在问题，请检查设置'
   currentStep.value = 3
+  
+  if (testPassed.value) {
+    await initAudioProcessor();
+  }
 }
 
 // 重新测试
 const restartTest = () => {
-  currentStep.value = 0
-  volumeLevel.value = 0
-  hearSound.value = null
-  hasDetectedVoice.value = false
-  testPassed.value = false
-  resultMessage.value = ''
+  currentStep.value = 0;
+  volumeLevel.value = 0;
+  hearSound.value = null;
+  hasDetectedVoice.value = false;
+  testPassed.value = false;
+  resultMessage.value = '';
   deviceChecks.value = {
     microphone: false,
     speaker: false,
     vbcable: false
-  }
+  };
+  localStorage.removeItem('audioDeviceSelection');
+  audioProcessor.dispose();
+  isProcessorInitialized.value = false;
 }
+
+const startRecording = async () => {
+  if (!isProcessorInitialized.value) {
+    await initAudioProcessor();
+  }
+  
+  if (isProcessorInitialized.value) {
+    recordingStatus.value = '正在录音...';
+    audioProcessor.startCollecting();
+  } else {
+    ElMessage.error('音频设备未就绪，请先完成设备测试');
+  }
+};
+
+const stopRecording = () => {
+  if (isProcessorInitialized.value) {
+    recordingStatus.value = '未录音';
+    audioProcessor.stopCollecting();
+  }
+};
+
+// 组件卸载时清理
+onUnmounted(() => {
+  audioProcessor.dispose();
+  isProcessorInitialized.value = false;
+});
 </script>
 
 <style scoped>
@@ -245,6 +371,16 @@ const restartTest = () => {
   align-items: center;
   gap: 8px;
   margin: 20px 0;
+  color: #666;
+}
+
+.voice-control {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.status-text {
+  margin-top: 10px;
   color: #666;
 }
 </style> 

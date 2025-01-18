@@ -5,6 +5,7 @@ class TranslatorProcessor extends AudioWorkletProcessor {
   private sampleRate: number;
   private isCollecting: boolean = false;
   private readonly BUFFER_SIZE = 44100; // 1秒的音频数据
+  private collectingInterval: number = 0; // 记录收集的时间间隔
 
   constructor() {
     super();
@@ -18,11 +19,16 @@ class TranslatorProcessor extends AudioWorkletProcessor {
     if (event.data.type === 'startCollecting') {
       this.isCollecting = true;
       this.audioBuffer = [];
+      this.collectingInterval = 0;
       console.log('开始收集音频数据');
     } else if (event.data.type === 'stopCollecting') {
       this.isCollecting = false;
       console.log('停止收集音频数据，开始处理');
-      this.processCollectedAudio();
+      if (this.audioBuffer.length > 0) {
+        this.processCollectedAudio();
+        this.audioBuffer = [];
+        this.collectingInterval = 0;
+      }
     }
   }
 
@@ -32,12 +38,8 @@ class TranslatorProcessor extends AudioWorkletProcessor {
       
       // 1. 合并收集的音频数据
       const mergedBuffer = this.mergeBuffers(this.audioBuffer);
-      console.log('音频数据已合并, 长度:', mergedBuffer.length);
-      
       // 2. 将 Float32Array 转换为 WAV 格式
       const wavBuffer = this.float32ToWav(mergedBuffer);
-      console.log('已转换为WAV格式, 大小:', wavBuffer.byteLength);
-      
       // 3. 转换为 Base64
       const base64Audio = this.arrayBufferToBase64(wavBuffer);
       console.log('已转换为Base64, 长度:', base64Audio.length);
@@ -145,20 +147,6 @@ class TranslatorProcessor extends AudioWorkletProcessor {
       // 收集音频数据
       const inputData = new Float32Array(input[0]);
       this.audioBuffer.push(inputData);
-      
-      // 每50帧打印一次，避免日志太多
-      if (this.audioBuffer.length % 50 === 0) {
-        console.log('正在收集音频数据，当前帧数:', this.audioBuffer.length);
-        console.log('当前缓冲区大小:', this.audioBuffer.length * input[0].length);
-      }
-      
-      // 如果缓冲区达到指定大小，开始处理
-      if (this.audioBuffer.length * input[0].length >= this.BUFFER_SIZE) {
-        console.log('缓冲区已满，当前大小:', this.audioBuffer.length * input[0].length);
-        console.log('开始处理收集的音频数据');
-        this.processCollectedAudio();
-        this.audioBuffer = [];
-      }
     }
 
     // 直接传递音频数据
