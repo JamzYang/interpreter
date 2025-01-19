@@ -190,14 +190,15 @@ class TranslatorProcessor extends AudioWorkletProcessor {
         this.state = AudioProcessingState.IDLE;
         console.log('处理输出完成， 回到空闲状态', new Date().toISOString());
       }
-    } else if (input && output) {
-      // 直接传递输入到输出
-      for (let channel = 0; channel < input.length; channel++) {
-        const inputChannel = input[channel];
-        const outputChannel = output[channel];
-        outputChannel.set(inputChannel);
-      }
-    }
+    } 
+    // else if (input && output && AudioProcessingState.IDLE === this.state) {
+    //   // 直接传递输入到输出
+    //   for (let channel = 0; channel < input.length; channel++) {
+    //     const inputChannel = input[channel];
+    //     const outputChannel = output[channel];
+    //     outputChannel.set(inputChannel);
+    //   }
+    // }
 
     return true;
   }

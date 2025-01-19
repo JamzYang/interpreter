@@ -50,11 +50,22 @@ export class AudioProcessor extends EventEmitter {
             
             // 处理音频数据
             const transcribedText = await llmService.transcribeAudio(event.data.data);
-            console.log('转录结果:', transcribedText, new Date().toISOString());
-            
+            console.log('音频转录结果',transcribedText, new Date().toISOString());
+            //转录结果格式：<chinese_text>中文文本转录<english_text>english transcript
             // 获取TTS音频数据并解码
-            const ttsBuffer = await llmService.textToAudio(transcribedText);
-            console.log('text转音频完成', new Date().toISOString());
+            const regex =/<chinese>(.*?)<\/chinese><english>(.*?)<\/english>/;
+            const matches = transcribedText.match(regex);
+            console.log('正则匹配',matches);
+            const transcribeResult = {
+                chinese_text: matches ? matches[1] : '',
+                english_text: matches ? matches[2] : ''
+            };
+            console.log('预转音频的text',transcribeResult.english_text, new Date().toISOString());
+            if(!(transcribeResult.english_text && transcribeResult.english_text.trim() !== '')){
+                throw new Error('转录结果为空');
+            }
+            const ttsBuffer = await llmService.textToAudio(transcribeResult.english_text);
+            console.log('text转音频完成',transcribeResult, new Date().toISOString());
 
             // 解码音频数据
             const audioContext = this.audioContextManager.getAudioContext();

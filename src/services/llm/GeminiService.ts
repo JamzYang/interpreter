@@ -23,7 +23,7 @@ export class GeminiService implements LLMService {
             data: audioBase64
           }
         },
-        { text: "Generate a text transcript of the voice and translate it into English." },
+        { text: "为音频生成一个文本转录，并翻译成英文，如果是英文，则直接生成英文。文本不要有换行，生成结果严格按照格式：<chinese>中文文本转录</chinese><english>english transcript</english>" },
       ]);
 
 // Print the response.
